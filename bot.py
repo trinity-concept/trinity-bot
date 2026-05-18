@@ -1,14 +1,16 @@
-import os,logging
+import os,logging,httpx
 from telegram import Update
 from telegram.ext import Application,MessageHandler,CommandHandler,filters,ContextTypes
 import anthropic
-TELEGRAM_TOKEN=os.environ.get('TELEGRAM_TOKEN','')
-ANTHROPIC_API_KEY=os.environ.get('ANTHROPIC_API_KEY','')
+TELEGRAM_TOKEN=os.environ.get("TELEGRAM_TOKEN","")
+ANTHROPIC_API_KEY=os.environ.get("ANTHROPIC_API_KEY","")
 logging.basicConfig(level=logging.INFO)
-client=anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
-P="""Ты менеджер продаж TRINITY CONCEPT. Отвечаешь EN потом RU. Голос теплый без давления, каждый ответ заканчивается вопросом. Без тире. Писать: что притянуло взгляд, что ближе прямо сейчас, какой камень притягивает. Конструктор: https://trinityconstructor.netlify.app — упоминать всегда. Цену только после выбора камня и формы. Каталог только если просят. Камни: Аметист(внутренний голос), Зеленый аметист(принятие), Розовый кварц(любовь к себе), Цитрин(уверенность), Sky Blue Topaz(свобода), Swiss Blue Topaz(сила голоса), Дымчатый кварц(заземление). Sky Blue светлее, Swiss Blue глубже. Формы: Trillion/Треугольник Pear/Капля Heart/Сердце Oval/Овал Cushion/Кушон. Размеры: S 9мм от 199 M 13мм от 325 L 16мм от 450. База Дубай, доставка отдельно, дроп июнь."""
+client=anthropic.Anthropic(api_key=ANTHROPIC_API_KEY,http_client=httpx.Client())
+P="""Ты менеджер продаж TRINITY CONCEPT. Отвечаешь EN потом RU. Голос теплый без давления, каждый ответ заканчивается вопросом. Без тире. Писать: что притянуло взгляд, что ближе прямо сейчас, какой камень притягивает. Конструктор: https://trinityconstructor.netlify.app упоминать всегда. Цену только после выбора камня и формы. Каталог только если просят. Камни: Аметист(внутренний голос), Зеленый аметист(принятие), Розовый кварц(любовь к себе), Цитрин(уверенность), Sky Blue Topaz(свобода), Swiss Blue Topaz(сила голоса), Дымчатый кварц(заземление). Формы: Trillion/Треугольник Pear/Капля Heart/Сердце Oval/Овал Cushion/Кушон. Размеры: S 9мм от 199 M 13мм от 325 L 16мм от 450. База Дубай, доставка отдельно, дроп июнь."""
 H={}
-async def start(u,c):await u.message.reply_text("Trinity Sales Bot\nПришли сообщение клиента - отвечу скриптом EN+RU\n/new - новый клиент")
+async def start(u,c):await u.message.reply_text("Trinity Sales Bot
+Пришли сообщение клиента - отвечу скриптом EN+RU
+/new - новый клиент")
 async def new_conv(u,c):H[u.effective_user.id]=[];await u.message.reply_text("Новый диалог!")
 async def msg(u,c):
  i=u.effective_user.id
