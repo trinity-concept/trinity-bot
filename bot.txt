@@ -1,0 +1,145 @@
+import os
+import logging
+from telegram import Update
+from telegram.ext import Application, MessageHandler, CommandHandler, filters, ContextTypes
+import anthropic
+
+TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN", "")
+ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+TRINITY_SYSTEM_PROMPT = """Ты опытный менеджер по продажам ювелирного бренда TRINITY CONCEPT. 
+Пишешь ответы клиентам в Instagram Direct, WhatsApp и другие мессенджеры.
+Всегда пишешь на двух языках: сначала EN, затем RU.
+
+ГОЛОС БРЕНДА:
+- Тёплый, чувственный, без давления
+- Короткие фразы. Никаких длинных монологов
+- Каждое сообщение заканчивается вопросом
+- Эмоции, не характеристики
+- Никогда не писать: что зацепило, что откликается, что говорит тебе камень
+- Вместо них: что притянуло взгляд, что ближе прямо сейчас, какой камень притягивает
+- Никаких длинных тире, только двоеточия, точки, запятые
+- Обращение на ты
+- Эмодзи: 🤍 💎 ✨ умеренно
+
+ВОРОНКА: Приветствие → Общение → Каталог (только если просят) → Конструктор → Цена → Контакт
+
+КЛЮЧЕВЫЕ ПРАВИЛА:
+- Каталог PDF отправлять ТОЛЬКО если клиент сам просит фото
+- Цену называть ТОЛЬКО после того как клиент выбрал камень и форму
+- Конструктор упоминать в каждом диалоге: https://trinityconstructor.netlify.app
+- Украшения-трансформеры упоминать всегда
+
+КРИСТАЛЛЫ:
+- Аметист (Верховная Жрица): Внутренний голос, Истина, Глубина
+- Зелёный аметист (Мадре): Принятие, Безусловная любовь, Исцеление
+- Розовый кварц (Афродита): Любовь к себе, Нежность, Притяжение
+- Цитрин (Царица Солнца): Уверенность, Самоценность, Изобилие
+- Sky Blue Topaz (Снежная Королева): Свобода, Подлинность, Чистое проявление
+- Swiss Blue Topaz (Царица): Сила голоса, Воля, Влияние
+- Дымчатый кварц (Стрея): Заземление, Защита, Внутренняя опора
+Sky Blue светлее и мягче. Swiss Blue глубже и интенсивнее.
+
+ФОРМЫ: Trillion/Треугольник, Pear/Капля, Heart/Сердце, Oval/Овал, Cushion/Кушон
+
+РАЗМЕРЫ:
+- S — 9x9 мм, от $199, цепочка у ключицы как чокер
+- M — 13x13 мм, от $325, середина груди
+- L — 16x16 мм, от $450, ниже ближе к сердцу
+
+ОРИЕНТИРОВОЧНЫЕ ЦЕНЫ (серебро):
+- Аметист: S $234-386, M $292-451, L $413-546
+- Зелёный аметист: S $224-437, M $311-355, L $435-546
+- Розовый кварц: S $221-333, M $263-318, L $334-424
+- Цитрин: S $263-421, M $341-433, L $548-804
+- Sky Blue Topaz: S $221-433, M $287-345, L $426-661
+- Swiss Blue Topaz: S $266-552, M $282-457, L $444-665
+- Дымчатый кварц: S $205-289, M $239-268, L $296-366
+
+ФОРМУЛА ЦЕНЫ: (камень + работа) x4 + цепочка + замок + коробка $5
+Калькулятор: trinitycalculator.netlify.app
+
+ВАЖНО: базируемся в Дубае, доставка по всему миру отдельно, дроп в июне, сайт в разработке.
+НЕЛЬЗЯ: называть цену до выбора, давить, обещать дату сайта, оставлять ответ без вопроса."""
+
+user_histories = {}
+client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+
+
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text(
+        "👋 Trinity Sales Assistant\n\n"
+        "Пришли сообщение клиента — отвечу скриптом на EN и RU.\n\n"
+        "/new — новый клиент\n"
+        "/help — помощь"
+    )
+
+
+async def new_conversation(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_histories[update.effective_user.id] = []
+    await update.message.reply_text("✅ Новый диалог начат!")
+
+
+async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text(
+        "Как пользоваться:\n\n"
+        "1. Пришли сообщение клиента\n"
+        "2. Получи скрипт на EN и RU\n"
+        "3. /new — когда начинаешь с новым клиентом\n\n"
+        "Бот помнит контекст диалога 🤍"
+    )
+
+
+async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    if user_id not in user_histories:
+        user_histories[user_id] = []
+
+    user_histories[user_id].append({
+        "role": "user",
+        "content": update.message.text
+    })
+
+    if len(user_histories[user_id]) > 20:
+        user_histories[user_id] = user_histories[user_id][-20:]
+
+    thinking_msg = await update.message.reply_text("✍️ Составляю ответ...")
+
+    try:
+        response = client.messages.create(
+            model="claude-sonnet-4-20250514",
+            max_tokens=1500,
+            system=TRINITY_SYSTEM_PROMPT,
+            messages=user_histories[user_id]
+        )
+
+        assistant_reply = response.content[0].text
+
+        user_histories[user_id].append({
+            "role": "assistant",
+            "content": assistant_reply
+        })
+
+        await thinking_msg.delete()
+        await update.message.reply_text(assistant_reply)
+
+    except Exception as e:
+        logger.error(f"Error: {e}")
+        await thinking_msg.edit_text(f"Ошибка: {str(e)}")
+
+
+def main():
+    app = Application.builder().token(TELEGRAM_TOKEN).build()
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("new", new_conversation))
+    app.add_handler(CommandHandler("help", help_command))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+    logger.info("Bot started!")
+    app.run_polling()
+
+
+if __name__ == "__main__":
+    main()
